@@ -1,4 +1,4 @@
-function [hiddenWeights, outputWeights, error] = trainStochasticSquaredErrorTwoLayerPerceptron(activationFunction, dActivationFunction, numberOfHiddenUnits, inputValues, targetValues, inputValues_test, labels_test, epochs, batchSize, learningRate)
+function [hiddenWeights, outputWeights, hiddenWeights_twin, outputWeights_twin,error, sample_error] = train_twin(activationFunction, dActivationFunction, numberOfHiddenUnits, hiddenWeights, outputWeights, numberOfHiddenUnits_twin, hiddenWeights_twin, outputWeights_twin, inputValues, targetValues,  epochs, batchSize, learningRate)
 % trainStochasticSquaredErrorTwoLayerPerceptron Creates a two-layer perceptron
 % and trains it on the MNIST dataset.
 %
@@ -27,29 +27,17 @@ function [hiddenWeights, outputWeights, error] = trainStochasticSquaredErrorTwoL
     outputDimensions = size(targetValues, 1);
     
     % Initialize the weights for the hidden layer and the output layer.
-    hiddenWeights = rand(numberOfHiddenUnits, inputDimensions);
-    outputWeights = rand(outputDimensions, numberOfHiddenUnits);
+    % hiddenWeights = rand(numberOfHiddenUnits, inputDimensions);
+    % outputWeights = rand(outputDimensions, numberOfHiddenUnits);
     
-    hiddenWeights = hiddenWeights./size(hiddenWeights, 2);
-    outputWeights = outputWeights./size(outputWeights, 2);
+    % hiddenWeights = hiddenWeights./size(hiddenWeights, 2);
+    % outputWeights = outputWeights./size(outputWeights, 2);
     
-    %Distribute sample
-    randindex = randperm(size(inputValues,2));
-    device_num = 10;
-    initial_size = 1000;
-    device_size = floor((size(inputValues,2)-initial_size)/device_num);
-    initial_size = size(inputValues,2) - device_size * device_num;
-    initial_data = inputValues(:,randindex(1:initial_size));
-    device_data =  zeros(device_num,size(inputValues,1),device_size);
-    for cnt=1:device_num
-        device_data(cnt,:,:) = inputValues(:,randindex(initial_size + (cnt-1) * device_size + 1:initial_size + cnt * device_size));
-    end;
-    
+
     
     n = zeros(batchSize);
-    time = 0;
    
-    figure; hold on;
+    %figure; hold on;
     
     accuracy_curve=zeros(1,epochs);
     error_curve=zeros(1,epochs);
@@ -58,9 +46,8 @@ function [hiddenWeights, outputWeights, error] = trainStochasticSquaredErrorTwoL
         for k = 1: batchSize
             % Select which input vector to train on.
             n(k) = floor(rand(1)*trainingSetSize + 1);
-            
-            if time < 4*batchSize
-                time = time + 1;
+            if (t<=50)&&(k==1)
+                n(k) = trainingSetSize;
             end
             
             % Propagate the input vector through the network.
@@ -78,6 +65,11 @@ function [hiddenWeights, outputWeights, error] = trainStochasticSquaredErrorTwoL
             
             outputWeights = outputWeights - learningRate.*outputDelta*hiddenOutputVector';
             hiddenWeights = hiddenWeights - learningRate.*hiddenDelta*inputVector';
+
+            if (t<=50)&&(k==1)
+                sample_error = norm(outputVector - targetVector);
+            end
+
             
         end
         
@@ -88,16 +80,23 @@ function [hiddenWeights, outputWeights, error] = trainStochasticSquaredErrorTwoL
             targetVector = targetValues(:, n(k));
             
             error = error + norm(activationFunction(outputWeights*activationFunction(hiddenWeights*inputVector)) - targetVector, 2);
+            targetVector = activationFunction(outputWeights*activationFunction(hiddenWeights*inputVector));
+
+            hiddenActualInput = hiddenWeights_twin*inputVector;
+            hiddenOutputVector = activationFunction(hiddenActualInput);
+            outputActualInput = outputWeights_twin*hiddenOutputVector;
+            outputVector = activationFunction(outputActualInput);
+
+            outputDelta = dActivationFunction(outputActualInput).*(outputVector - targetVector);
+            hiddenDelta = dActivationFunction(hiddenActualInput).*(outputWeights_twin'*outputDelta);
+            
+            outputWeights_twin = outputWeights_twin - learningRate.*outputDelta*hiddenOutputVector';
+            hiddenWeights_twin = hiddenWeights_twin - learningRate.*hiddenDelta*inputVector';
+
         end
         error = error/batchSize;
         
-        plot(t, error,'*');
+        %plot(t, error,'*');
         error_curve(t)=error;
-        [correctlyClassified, classificationErrors] = validateTwoLayerPerceptron(activationFunction, hiddenWeights, outputWeights, inputValues_test, labels_test);
-        accuracy_curve(t) = double(classificationErrors)/double(correctlyClassified+classificationErrors);
     end
-    figure;
-    plot(accuracy_curve);
-    save('MAB_nohistory_accuracy.mat','accuracy_curve');
-    save('MAB_nohistory_error.mat','error_curve');
 end
